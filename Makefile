@@ -1,6 +1,6 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -g
-VERSION = 1.0.0
+VERSION = 1.1.0
 SRC     = src/ls-v$(VERSION).c
 OBJ     = obj/ls-v$(VERSION).o
 TARGET  = bin/ls
