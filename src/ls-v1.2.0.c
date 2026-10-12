@@ -1,6 +1,6 @@
 /*
- * Programming Assignment 02: ls-v1.1.0
- * Re-engineered ls utility (version 1.1.0)
+ * Programming Assignment 02: ls-v1.2.0
+ * Re-engineered ls utility (version 1.2.0)
  *
  * Usage:
  *       $ ./bin/ls
@@ -18,6 +18,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 
 enum {
@@ -28,6 +29,14 @@ enum {
 static int display_mode = MODE_DEFAULT;
 
 
+/* Terminal width via ioctl(TIOCGWINSZ); falls back to 80 columns */
+static int term_width(void)
+{
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+        return ws.ws_col;
+    return 80;
+}
 
 /* Build "dir/name" without producing a double slash */
 static void build_path(char *buf, size_t size, const char *dir, const char *name)
@@ -111,28 +120,126 @@ static void print_long_entry(const char *dir, const char *name)
     putchar('\n');
 }
 
-
-
-static void do_ls(const char *dir)
+/* Read all visible entries into a dynamically growing array of strings.
+ * Returns NULL on failure. Caller must call free_entries(). */
+static char **read_entries(const char *dir, size_t *count, size_t *maxlen)
 {
-    struct dirent *entry;
     DIR *dp = opendir(dir);
     if (dp == NULL) {
         fprintf(stderr, "Cannot open directory : %s\n", dir);
-        return;
+        return NULL;
     }
+
+    size_t cap = 16, n = 0, ml = 0;
+    char **names = malloc(cap * sizeof *names);
+    if (names == NULL) {
+        perror("malloc");
+        closedir(dp);
+        return NULL;
+    }
+
+    struct dirent *entry;
     errno = 0;
     while ((entry = readdir(dp)) != NULL) {
         if (entry->d_name[0] == '.')
             continue;
-        if (display_mode == MODE_LONG)
-            print_long_entry(dir, entry->d_name);
-        else
-            printf("%s\n", entry->d_name);
+        if (n == cap) {
+            cap *= 2;
+            char **tmp = realloc(names, cap * sizeof *names);
+            if (tmp == NULL) {
+                perror("realloc");
+                break;
+            }
+            names = tmp;
+        }
+        names[n] = strdup(entry->d_name);
+        if (names[n] == NULL) {
+            perror("strdup");
+            break;
+        }
+        size_t len = strlen(entry->d_name);
+        if (len > ml) ml = len;
+        n++;
     }
     if (errno != 0)
         perror("readdir failed");
+
     closedir(dp);
+    *count = n;
+    *maxlen = ml;
+    return names;
+}
+
+static void free_entries(char **names, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        free(names[i]);
+    free(names);
+}
+
+/* "total N" line used by -l (blocks are 512 bytes, ls shows 1K blocks) */
+static long long total_blocks(const char *dir, char **names, size_t count)
+{
+    long long total = 0;
+    char path[PATH_MAX];
+    struct stat st;
+    for (size_t i = 0; i < count; i++) {
+        build_path(path, sizeof path, dir, names[i]);
+        if (lstat(path, &st) == 0)
+            total += st.st_blocks;
+    }
+    return total / 2;
+}
+
+static void pad_spaces(int n)
+{
+    while (n-- > 0)
+        putchar(' ');
+}
+
+/* Default layout: "down then across" */
+static void print_columns(const char *dir, char **names, size_t count, size_t maxlen)
+{
+    if (count == 0)
+        return;
+    int width = term_width();
+    int colw = (int)maxlen + 2;
+    int cols = width / colw;
+    if (cols < 1) cols = 1;
+    size_t rows = (count + cols - 1) / cols;
+
+    for (size_t r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            size_t idx = (size_t)c * rows + r;
+            if (idx >= count)
+                break;
+            print_name(dir, names[idx]);
+            if (idx + rows < count)               /* another column follows */
+                pad_spaces(colw - (int)strlen(names[idx]));
+        }
+        putchar('\n');
+    }
+}
+
+
+static void do_ls(const char *dir)
+{
+    size_t count = 0, maxlen = 0;
+    char **names = read_entries(dir, &count, &maxlen);
+    if (names == NULL)
+        return;
+
+
+    if (display_mode == MODE_LONG) {
+        printf("total %lld\n", total_blocks(dir, names, count));
+        for (size_t i = 0; i < count; i++)
+            print_long_entry(dir, names[i]);
+    }
+    else
+        print_columns(dir, names, count, maxlen);
+
+
+    free_entries(names, count);
 }
 
 int main(int argc, char *argv[])
