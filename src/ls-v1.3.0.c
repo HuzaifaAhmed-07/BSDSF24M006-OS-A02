@@ -1,11 +1,11 @@
 /*
- * Programming Assignment 02: ls-v1.2.0
- * Re-engineered ls utility (version 1.2.0)
+ * Programming Assignment 02: ls-v1.3.0
+ * Re-engineered ls utility (version 1.3.0)
  *
  * Usage:
  *       $ ./bin/ls
  *       $ ./bin/ls /home /etc
- *       $ ./bin/ls -l [directory...]
+ *       $ ./bin/ls -lx [directory...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +23,7 @@
 
 enum {
     MODE_DEFAULT,
+    MODE_HORIZONTAL,
     MODE_LONG
 };
 
@@ -221,6 +222,25 @@ static void print_columns(const char *dir, char **names, size_t count, size_t ma
     }
 }
 
+/* -x layout: left to right, wrap when the next column will not fit */
+static void print_horizontal(const char *dir, char **names, size_t count, size_t maxlen)
+{
+    int width = term_width();
+    int colw = (int)maxlen + 2;
+    int pos = 0;
+
+    for (size_t i = 0; i < count; i++) {
+        if (pos > 0 && pos + colw > width) {
+            putchar('\n');
+            pos = 0;
+        }
+        print_name(dir, names[i]);
+        pad_spaces(colw - (int)strlen(names[i]));
+        pos += colw;
+    }
+    if (pos > 0)
+        putchar('\n');
+}
 
 static void do_ls(const char *dir)
 {
@@ -235,6 +255,8 @@ static void do_ls(const char *dir)
         for (size_t i = 0; i < count; i++)
             print_long_entry(dir, names[i]);
     }
+    else if (display_mode == MODE_HORIZONTAL)
+        print_horizontal(dir, names, count, maxlen);
     else
         print_columns(dir, names, count, maxlen);
 
@@ -245,13 +267,17 @@ static void do_ls(const char *dir)
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "l")) != -1) {
+    while ((opt = getopt(argc, argv, "lx")) != -1) {
         switch (opt) {
         case 'l':
             display_mode = MODE_LONG;
             break;
+        case 'x':
+            if (display_mode != MODE_LONG)
+                display_mode = MODE_HORIZONTAL;
+            break;
         default:
-            fprintf(stderr, "Usage: %s [-l] [directory...]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [-lx] [directory...]\n", argv[0]);
             return 1;
         }
     }
