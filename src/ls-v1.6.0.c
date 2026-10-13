@@ -1,11 +1,11 @@
 /*
- * Programming Assignment 02: ls-v1.5.0
- * Re-engineered ls utility (version 1.5.0)
+ * Programming Assignment 02: ls-v1.6.0
+ * Re-engineered ls utility (version 1.6.0)
  *
  * Usage:
  *       $ ./bin/ls
  *       $ ./bin/ls /home /etc
- *       $ ./bin/ls -lx [directory...]
+ *       $ ./bin/ls -lxR [directory...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +36,7 @@ enum {
 
 static int display_mode = MODE_DEFAULT;
 static int use_color = 0;
+static int recursive = 0;
 
 /* qsort comparator: names are char* elements of the array */
 static int cmp_names(const void *a, const void *b)
@@ -316,6 +317,18 @@ static void do_ls(const char *dir)
     else
         print_columns(dir, names, count, maxlen);
 
+    if (recursive) {
+        for (size_t i = 0; i < count; i++) {
+            char path[PATH_MAX];
+            struct stat st;
+            build_path(path, sizeof path, dir, names[i]);
+            /* lstat: never follow symlinks, avoids infinite loops */
+            if (lstat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                printf("\n%s:\n", path);
+                do_ls(path);
+            }
+        }
+    }
 
     free_entries(names, count);
 }
@@ -323,7 +336,7 @@ static void do_ls(const char *dir)
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "lx")) != -1) {
+    while ((opt = getopt(argc, argv, "lxR")) != -1) {
         switch (opt) {
         case 'l':
             display_mode = MODE_LONG;
@@ -332,8 +345,11 @@ int main(int argc, char *argv[])
             if (display_mode != MODE_LONG)
                 display_mode = MODE_HORIZONTAL;
             break;
+        case 'R':
+            recursive = 1;
+            break;
         default:
-            fprintf(stderr, "Usage: %s [-lx] [directory...]\n", argv[0]);
+            fprintf(stderr, "Usage: %s [-lxR] [directory...]\n", argv[0]);
             return 1;
         }
     }
@@ -342,10 +358,12 @@ int main(int argc, char *argv[])
 
     int ndirs = argc - optind;
     if (ndirs == 0) {
+        if (recursive)
+            printf(".:\n");
         do_ls(".");
     } else {
         for (int i = optind; i < argc; i++) {
-            if (ndirs > 1)
+            if (ndirs > 1 || recursive)
                 printf("%s:\n", argv[i]);
             do_ls(argv[i]);
             if (i < argc - 1)
