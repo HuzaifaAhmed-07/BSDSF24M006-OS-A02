@@ -1,6 +1,6 @@
 /*
- * Programming Assignment 02: ls-v1.4.0
- * Re-engineered ls utility (version 1.4.0)
+ * Programming Assignment 02: ls-v1.5.0
+ * Re-engineered ls utility (version 1.5.0)
  *
  * Usage:
  *       $ ./bin/ls
@@ -20,6 +20,13 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 
+/* ANSI escape codes for colors */
+#define COLOR_RESET   "\033[0m"
+#define COLOR_BLUE    "\033[0;34m"   /* directories      */
+#define COLOR_GREEN   "\033[0;32m"   /* executables      */
+#define COLOR_RED     "\033[0;31m"   /* archives         */
+#define COLOR_PINK    "\033[1;35m"   /* symbolic links   */
+#define COLOR_REVERSE "\033[7m"      /* special files    */
 
 enum {
     MODE_DEFAULT,
@@ -28,6 +35,7 @@ enum {
 };
 
 static int display_mode = MODE_DEFAULT;
+static int use_color = 0;
 
 /* qsort comparator: names are char* elements of the array */
 static int cmp_names(const void *a, const void *b)
@@ -79,11 +87,51 @@ static void mode_string(mode_t m, char *s)
     s[10] = '\0';
 }
 
+static int has_suffix(const char *name, const char *suffix)
+{
+    size_t n = strlen(name), s = strlen(suffix);
+    return n > s && strcmp(name + n - s, suffix) == 0;
+}
+
+static int is_archive(const char *name)
+{
+    static const char *exts[] = { ".tar", ".gz", ".tgz", ".zip", ".bz2", ".xz", NULL };
+    for (int i = 0; exts[i] != NULL; i++)
+        if (has_suffix(name, exts[i]))
+            return 1;
+    return 0;
+}
+
+/* Pick the color for a file based on its type (lstat so links stay links) */
+static const char *color_for(const char *path, const char *name)
+{
+    struct stat st;
+    if (lstat(path, &st) == -1)
+        return "";
+    mode_t m = st.st_mode;
+    if (S_ISLNK(m))  return COLOR_PINK;
+    if (S_ISDIR(m))  return COLOR_BLUE;
+    if (S_ISCHR(m) || S_ISBLK(m) || S_ISSOCK(m) || S_ISFIFO(m))
+        return COLOR_REVERSE;
+    if (is_archive(name))
+        return COLOR_RED;
+    if (m & (S_IXUSR | S_IXGRP | S_IXOTH))
+        return COLOR_GREEN;
+    return "";
+}
 
 /* Print one file name (colored when enabled). Does NOT print padding. */
 static void print_name(const char *dir, const char *name)
 {
-    (void)dir;
+    if (use_color) {
+        char path[PATH_MAX];
+        build_path(path, sizeof path, dir, name);
+        const char *c = color_for(path, name);
+        if (*c) {
+            printf("%s%s%s", c, name, COLOR_RESET);
+            return;
+        }
+    }
     fputs(name, stdout);
 }
 
@@ -290,6 +338,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    use_color = isatty(STDOUT_FILENO);
 
     int ndirs = argc - optind;
     if (ndirs == 0) {
