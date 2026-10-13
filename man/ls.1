@@ -1,0 +1,22 @@
+.TH LS 1 "October 2026" "ls-v1.6.0" "User Commands"
+.SH NAME
+ls \- list directory contents (OS Assignment 02 re-implementation)
+.SH SYNOPSIS
+.B ls
+[\fB\-lxR\fR] [\fIDIRECTORY\fR]...
+.SH DESCRIPTION
+Lists the contents of each DIRECTORY (default: current directory). Hidden files (names beginning with a dot) are not shown. Output is sorted alphabetically and colorized when writing to a terminal.
+.SH OPTIONS
+.TP
+.B \-l
+Long listing format: permissions, link count, owner, group, size, modification time, name.
+.TP
+.B \-x
+Display entries in columns, left to right (horizontal), instead of down then across.
+.TP
+.B \-R
+List subdirectories recursively.
+.SH COLORS
+Blue: directories. Green: executables. Red: archives (.tar, .gz, .zip). Pink: symbolic links. Reverse video: special files.
+.SH AUTHOR
+Written by ROLL_NO for the Operating Systems course.
