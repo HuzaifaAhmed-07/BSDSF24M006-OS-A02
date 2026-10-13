@@ -1,6 +1,6 @@
 /*
- * Programming Assignment 02: ls-v1.3.0
- * Re-engineered ls utility (version 1.3.0)
+ * Programming Assignment 02: ls-v1.4.0
+ * Re-engineered ls utility (version 1.4.0)
  *
  * Usage:
  *       $ ./bin/ls
@@ -29,6 +29,13 @@ enum {
 
 static int display_mode = MODE_DEFAULT;
 
+/* qsort comparator: names are char* elements of the array */
+static int cmp_names(const void *a, const void *b)
+{
+    const char *x = *(const char *const *)a;
+    const char *y = *(const char *const *)b;
+    return strcmp(x, y);
+}
 
 /* Terminal width via ioctl(TIOCGWINSZ); falls back to 80 columns */
 static int term_width(void)
@@ -249,6 +256,7 @@ static void do_ls(const char *dir)
     if (names == NULL)
         return;
 
+    qsort(names, count, sizeof *names, cmp_names);
 
     if (display_mode == MODE_LONG) {
         printf("total %lld\n", total_blocks(dir, names, count));
